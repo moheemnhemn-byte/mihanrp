@@ -8,43 +8,83 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout project
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
+          sudo dpkg --add-architecture i386
           sudo apt-get update
-          sudo apt-get install -y gcc g++ cmake make git
+          sudo apt-get install -y \
+            gcc \
+            g++ \
+            gcc-multilib \
+            g++-multilib \
+            libc6-dev-i386 \
+            cmake \
+            make \
+            git
 
-      - name: Find mxINI
+      - name: Build Pawn Compiler 3.10.10
         run: |
-          echo "Searching for mxINI..."
-          find . -type f \( -iname "mxini.inc" -o -iname "mxini" \) -print
+          git clone --depth 1 --branch 3.10.10 \
+            https://github.com/pawn-lang/compiler.git pawncompiler
 
-      - name: Build Pawn Compiler
-        run: |
-          git clone --depth 1 https://github.com/pawn-lang/compiler.git pawncompiler
-          cd pawncompiler
+          cd pawncompiler/source/compiler
+
           mkdir build
           cd build
-          cmake ../source/compiler -DCMAKE_BUILD_TYPE=Release
+
+          cmake .. \
+            -DCMAKE_C_FLAGS="-m32" \
+            -DCMAKE_BUILD_TYPE=Release
+
           cmake --build . --target pawncc -j2
-          cd ../../
-          chmod +x ./pawncompiler/build/pawncc
+
+          cd ../../..
+
+          file ./pawncompiler/source/compiler/build/pawncc
+
+      - name: Prepare includes
+        run: |
+          echo "Searching for mxINI.inc..."
+          find . -type f -iname "mxini.inc" -print
+
+          MXINI=$(find . -type f -iname "mxini.inc" | head -n 1)
+
+          if [ -z "$MXINI" ]; then
+            echo "ERROR: mxINI.inc not found"
+            exit 1
+          fi
+
+          echo "Found: $MXINI"
+
+          mkdir -p ./build_includes
+          cp "$MXINI" ./build_includes/mxini.inc
 
       - name: Compile new.pwn
         run: |
-          ./pawncompiler/build/pawncc \
+          ./pawncompiler/source/compiler/build/pawncc \
             ./gamemodes/new.pwn \
             -i./pawno/include \
+            -i./build_includes \
             -i./gamemodes \
             -i. \
+            -;+ \
+            -(+ \
+            -\+ \
+            -d3 \
             -Z+ \
+            -O1 \
             -o./gamemodes/new.amx
 
       - name: Check AMX
         run: |
+          echo "================================"
+          echo "      BUILD SUCCESSFUL"
+          echo "================================"
           ls -lh ./gamemodes/new.amx
+          file ./gamemodes/new.amx
 
       - name: Upload new.amx
         uses: actions/upload-artifact@v4
