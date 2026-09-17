@@ -1,4 +1,4 @@
-name: Compile NAVARA Pawn
+name: Compile new.pwn to new.amx
 
 on:
   workflow_dispatch:
@@ -8,44 +8,39 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Download project
         uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-multilib g++-multilib cmake make git
 
       - name: Build Pawn Compiler
         run: |
-          git clone --depth 1 https://github.com/pawn-lang/compiler.git pawn-compiler
+          git clone --depth 1 https://github.com/pawn-lang/compiler.git pawncompiler
 
-          cd pawn-compiler/source/compiler
+          cd pawncompiler
 
           mkdir build
           cd build
 
-          cmake .. -DCMAKE_BUILD_TYPE=Release
+          cmake ../source/compiler -DCMAKE_BUILD_TYPE=Release
           cmake --build . --target pawncc -j2
 
-          cd ../../..
-
-          chmod +x pawn-compiler/source/compiler/build/pawncc
+          cd ../../
 
       - name: Compile new.pwn
         run: |
-          ./pawn-compiler/source/compiler/build/pawncc \
-            gamemodes/new.pwn \
-            -i gamemodes/../pawno/include \
-            -i gamemodes/.. \
-            -o gamemodes/new.amx
+          ./pawncompiler/build/pawncc \
+            ./gamemodes/new.pwn \
+            -i./pawno/include \
+            -i./gamemodes \
+            -i. \
+            -o./gamemodes/new.amx
 
-      - name: Check AMX
+      - name: Check new.amx
         run: |
-          ls -lh gamemodes/new.amx
+          echo "Checking AMX..."
+          ls -lh ./gamemodes/new.amx
 
       - name: Upload new.amx
         uses: actions/upload-artifact@v4
         with:
-          name: NAVARA-new-amx
-          path: gamemodes/new.amx
+          name: new-amx
+          path: ./gamemodes/new.amx
