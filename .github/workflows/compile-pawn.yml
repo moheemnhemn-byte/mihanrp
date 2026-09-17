@@ -11,17 +11,41 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-multilib g++-multilib cmake make git
+
+      - name: Build Pawn Compiler
+        run: |
+          git clone --depth 1 https://github.com/pawn-lang/compiler.git pawn-compiler
+
+          cd pawn-compiler/source/compiler
+
+          mkdir build
+          cd build
+
+          cmake .. -DCMAKE_BUILD_TYPE=Release
+          cmake --build . --target pawncc -j2
+
+          cd ../../..
+
+          chmod +x pawn-compiler/source/compiler/build/pawncc
+
       - name: Compile new.pwn
-        id: compiler
-        uses: knryuu/pawn-compiler-action@v1
-        with:
-          input: gamemodes/new.pwn
-          output: gamemodes/new.amx
-          includes: "pawno/include ."
+        run: |
+          ./pawn-compiler/source/compiler/build/pawncc \
+            gamemodes/new.pwn \
+            -i gamemodes/../pawno/include \
+            -i gamemodes/.. \
+            -o gamemodes/new.amx
+
+      - name: Check AMX
+        run: |
+          ls -lh gamemodes/new.amx
 
       - name: Upload new.amx
         uses: actions/upload-artifact@v4
         with:
           name: NAVARA-new-amx
           path: gamemodes/new.amx
-          if-no-files-found: error
