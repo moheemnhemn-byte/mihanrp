@@ -8,12 +8,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout project
         uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
-          sudo dpkg --add-architecture i386
           sudo apt-get update
           sudo apt-get install -y \
             gcc \
@@ -25,41 +24,47 @@ jobs:
             make \
             git
 
-      - name: Build Pawn Compiler 3.10.10
+      - name: Download Pawn Compiler
         run: |
-          git clone --depth 1 --branch 3.10.10 \
-            https://github.com/pawn-lang/compiler.git pawncompiler
+          git clone --depth 1 https://github.com/pawn-lang/compiler.git pawncompiler
 
+      - name: Build Pawn Compiler
+        run: |
           cd pawncompiler/source/compiler
 
-          mkdir build
+          mkdir -p build
           cd build
 
           cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_FLAGS="-m32" \
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_CXX_FLAGS="-m32"
 
           cmake --build . --target pawncc -j2
 
-          cd ../../..
+          cd ../../../
 
-          file ./pawncompiler/source/compiler/build/pawncc
+          chmod +x ./pawncompiler/source/compiler/build/pawncc
 
-      - name: Prepare includes
+      - name: Find mxINI
         run: |
           echo "Searching for mxINI.inc..."
           find . -type f -iname "mxini.inc" -print
 
+      - name: Prepare includes
+        run: |
+          mkdir -p build_includes
+
           MXINI=$(find . -type f -iname "mxini.inc" | head -n 1)
 
           if [ -z "$MXINI" ]; then
-            echo "ERROR: mxINI.inc not found"
+            echo "ERROR: mxINI.inc was not found!"
             exit 1
           fi
 
-          echo "Found: $MXINI"
+          echo "Found mxINI:"
+          echo "$MXINI"
 
-          mkdir -p ./build_includes
           cp "$MXINI" ./build_includes/mxini.inc
 
       - name: Compile new.pwn
@@ -70,19 +75,15 @@ jobs:
             -i./build_includes \
             -i./gamemodes \
             -i. \
-            -;+ \
-            -(+ \
-            -\+ \
-            -d3 \
-            -Z+ \
-            -O1 \
+            -Z \
             -o./gamemodes/new.amx
 
       - name: Check AMX
         run: |
-          echo "================================"
-          echo "      BUILD SUCCESSFUL"
-          echo "================================"
+          echo "========================================"
+          echo "        NAVARA BUILD SUCCESSFUL"
+          echo "========================================"
+          echo ""
           ls -lh ./gamemodes/new.amx
           file ./gamemodes/new.amx
 
