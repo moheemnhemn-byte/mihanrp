@@ -1,0 +1,70 @@
+name: Build NAVARA AMX
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download Project
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget tar
+
+      - name: Download Pawn Compiler 3.10.10
+        run: |
+          wget -q https://github.com/pawn-lang/compiler/releases/download/v3.10.10/pawnc-3.10.10-linux.tar.gz
+          tar -xzf pawnc-3.10.10-linux.tar.gz
+
+          chmod +x pawnc-3.10.10-linux/bin/pawncc
+
+          echo "$PWD/pawnc-3.10.10-linux/bin" >> $GITHUB_PATH
+          echo "PAWNCC=$PWD/pawnc-3.10.10-linux/bin/pawncc" >> $GITHUB_ENV
+
+      - name: Install mxINI
+        run: |
+          mkdir -p pawno/include
+
+          wget -q \
+            https://raw.githubusercontent.com/Open-GTO/mxINI/master/mxINI.inc \
+            -O pawno/include/mxini.inc
+
+          test -f pawno/include/mxini.inc
+
+      - name: Compile new.pwn
+        run: |
+          mkdir -p gamemodes
+
+          echo "================================"
+          echo "Compiling NAVARA"
+          echo "================================"
+
+          "$PAWNCC" \
+            gamemodes/new.pwn \
+            "-ipawno/include" \
+            "-igamemodes" \
+            "-Z" \
+            "-ogamemodes/new"
+
+          echo "================================"
+          echo "Checking AMX"
+          echo "================================"
+
+          test -f gamemodes/new.amx
+
+          ls -lh gamemodes/new.amx
+
+          echo "================================"
+          echo "SUCCESS: new.amx CREATED"
+          echo "================================"
+
+      - name: Upload new.amx
+        uses: actions/upload-artifact@v4
+        with:
+          name: NAVARA-new-amx
+          path: gamemodes/new.amx
