@@ -86,7 +86,7 @@ jobs:
       # ==========================================
       # اختبار Compiler فقط
       # ==========================================
-      - name: Test Pawn Compiler
+        - name: Install mxINI
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
