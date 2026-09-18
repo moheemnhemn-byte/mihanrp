@@ -35,21 +35,26 @@ jobs:
             -O pawno/include/mxini.inc
 
           test -f pawno/include/mxini.inc
+    
+   - name: Compile new.pwn
+  run: |
+    mkdir -p gamemodes
 
-      - name: Compile new.pwn
-        run: |
-          mkdir -p gamemodes
+    echo "================================"
+    echo "Compiling NAVARA"
+    echo "================================"
 
-          echo "================================"
-          echo "Compiling NAVARA"
-          echo "================================"
+    export LD_LIBRARY_PATH="$GITHUB_WORKSPACE/pawnc-3.10.10-linux/lib:$LD_LIBRARY_PATH"
 
-          "$PAWNCC" \
-            gamemodes/new.pwn \
-            "-ipawno/include" \
-            "-igamemodes" \
-            "-Z" \
-            "-ogamemodes/new"
+    chmod +x "$GITHUB_WORKSPACE/pawnc-3.10.10-linux/bin/pawncc"
+
+    "$GITHUB_WORKSPACE/pawnc-3.10.10-linux/bin/pawncc" \
+      gamemodes/new.pwn \
+      "-ipawno/include" \
+      "-igamemodes" \
+      "-Z" \
+      "-ogamemodes/new"
+          
 
           echo "================================"
           echo "Checking AMX"
