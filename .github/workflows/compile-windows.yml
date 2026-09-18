@@ -12,7 +12,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # تحميل Windows Compiler الصحيح
+      # ==========================================
+      # تحميل Pawn Compiler Windows 3.10.10
+      # ==========================================
       - name: Download Pawn Compiler
         shell: powershell
         run: |
@@ -22,6 +24,8 @@ jobs:
 
           $zip = "$env:RUNNER_TEMP\pawnc.zip"
           $dir = "$env:GITHUB_WORKSPACE\pawn-compiler"
+
+          Write-Host "Downloading Pawn Compiler..."
 
           Invoke-WebRequest `
             -Uri $url `
@@ -38,21 +42,20 @@ jobs:
             -DestinationPath $dir `
             -Force
 
-          Write-Host "=== Compiler files ==="
+          Write-Host "Compiler extracted."
 
-          Get-ChildItem `
-            $dir `
-            -Recurse |
-            Select-Object FullName
-
-      # إيجاد Compiler
+      # ==========================================
+      # إيجاد pawncc.exe و pawnc.dll
+      # ==========================================
       - name: Locate Compiler
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
 
+          $compilerRoot = "$env:GITHUB_WORKSPACE\pawn-compiler"
+
           $pawncc = Get-ChildItem `
-            "$env:GITHUB_WORKSPACE\pawn-compiler" `
+            $compilerRoot `
             -Recurse `
             -Filter "pawncc.exe" `
             -File |
@@ -60,50 +63,89 @@ jobs:
 
           if ($null -eq $pawncc) {
             Write-Host "ERROR: pawncc.exe not found."
+            Write-Host "Available compiler files:"
+            Get-ChildItem $compilerRoot -Recurse |
+              Select-Object FullName
             exit 1
           }
 
-          Write-Host "FOUND:"
-          Write-Host $pawncc.FullName
-
           $compilerDir = $pawncc.Directory.FullName
 
+          Write-Host "================================"
+          Write-Host "FOUND pawncc.exe:"
+          Write-Host $pawncc.FullName
+          Write-Host "================================"
+
+          # البحث عن pawnc.dll
           $pawnc = Get-ChildItem `
-            "$env:GITHUB_WORKSPACE\pawn-compiler" `
+            $compilerRoot `
             -Recurse `
             -Filter "pawnc.dll" `
             -File |
             Select-Object -First 1
 
-          if ($null -ne $pawnc) {
-            Copy-Item `
-              $pawnc.FullName `
-              (Join-Path $compilerDir "pawnc.dll") `
-              -Force
-
-            Write-Host "pawnc.dll installed."
+          if ($null -eq $pawnc) {
+            Write-Host "ERROR: pawnc.dll not found."
+            exit 1
           }
 
+          $targetDll = Join-Path $compilerDir "pawnc.dll"
+
+          # لا تنسخ الملف إذا هو موجود بنفس المكان
+          if ($pawnc.FullName -ne $targetDll) {
+
+            Copy-Item `
+              $pawnc.FullName `
+              $targetDll `
+              -Force
+
+            Write-Host "pawnc.dll copied."
+
+          } else {
+
+            Write-Host "pawnc.dll already exists beside pawncc.exe."
+
+          }
+
+          # حفظ مسار Compiler للخطوة القادمة
           "PAWNCC=$($pawncc.FullName)" >> $env:GITHUB_ENV
 
+      # ==========================================
       # تثبيت mxINI
+      # ==========================================
       - name: Install mxINI
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
 
+          $includeDir = "$env:GITHUB_WORKSPACE\pawno\include"
+
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path $includeDir | Out-Null
+
           $url = "https://raw.githubusercontent.com/Open-GTO/mxINI/master/mxINI.inc"
 
-          $out = "$env:GITHUB_WORKSPACE\pawno\include\mxini.inc"
+          $out = "$includeDir\mxini.inc"
+
+          Write-Host "Downloading mxINI..."
 
           Invoke-WebRequest `
             -Uri $url `
             -OutFile $out `
             -UseBasicParsing
 
-          Write-Host "mxINI installed."
+          if (!(Test-Path $out)) {
+            Write-Host "ERROR: mxINI.inc was not created."
+            exit 1
+          }
 
-      # Compile
+          Write-Host "mxINI installed successfully."
+
+      # ==========================================
+      # Compile new.pwn
+      # ==========================================
       - name: Compile new.pwn
         shell: powershell
         run: |
@@ -112,31 +154,55 @@ jobs:
           $source = "$env:GITHUB_WORKSPACE\gamemodes\new.pwn"
           $include = "$env:GITHUB_WORKSPACE\pawno\include"
 
+          if (!(Test-Path $source)) {
+            Write-Host "ERROR: gamemodes\new.pwn not found."
+            exit 1
+          }
+
+          Write-Host "================================"
           Write-Host "Compiler:"
           Write-Host $env:PAWNCC
+          Write-Host "================================"
 
           Write-Host "Source:"
           Write-Host $source
+
+          Write-Host "================================"
+          Write-Host "Starting compilation..."
+          Write-Host "================================"
 
           & "$env:PAWNCC" `
             "$source" `
             "-i$include"
 
-          if ($LASTEXITCODE -ne 0) {
+          $exitCode = $LASTEXITCODE
+
+          Write-Host "Compiler exit code: $exitCode"
+
+          if ($exitCode -ne 0) {
             Write-Host "COMPILATION FAILED."
-            exit $LASTEXITCODE
+            exit $exitCode
           }
 
-          if (!(Test-Path "$env:GITHUB_WORKSPACE\gamemodes\new.amx")) {
+          # ======================================
+          # التأكد من إنشاء new.amx
+          # ======================================
+
+          $amx = "$env:GITHUB_WORKSPACE\gamemodes\new.amx"
+
+          if (!(Test-Path $amx)) {
             Write-Host "ERROR: new.amx was not created."
             exit 1
           }
 
           Write-Host "================================"
-          Write-Host "SUCCESS: new.amx created!"
+          Write-Host "SUCCESS!"
+          Write-Host "new.amx created successfully."
           Write-Host "================================"
 
-      # إخراج new.amx للتحميل
+      # ==========================================
+      # رفع new.amx للتحميل
+      # ==========================================
       - name: Upload new.amx
         uses: actions/upload-artifact@v4
         with:
