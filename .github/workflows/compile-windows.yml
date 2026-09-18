@@ -11,36 +11,33 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check files
-        shell: cmd
-        run: |
-          echo ===== PROJECT =====
-          dir
-          echo ===== PAWNO =====
-          dir pawno
-          echo ===== INCLUDE =====
-          dir pawno\include
-          echo ===== GAMEMODES =====
-          dir gamemodes
-
       - name: Compile new.pwn
         shell: cmd
         run: |
-          pawno\pawncc.exe gamemodes\new.pwn -ipawno\include -igamemodes -o gamemodes\new.amx
+          set "ROOT=%CD%"
+          set "COMPILER=%ROOT%\pawno\pawncc.exe"
+          set "SOURCE=%ROOT%\gamemodes\new.pwn"
+          set "INCLUDE=%ROOT%\pawno\include"
+          set "OUTPUT=%ROOT%\gamemodes\new"
 
-      - name: Check AMX
+          if not exist "%COMPILER%" exit /b 1
+          if not exist "%SOURCE%" exit /b 1
+          if not exist "%INCLUDE%" exit /b 1
+
+          "%COMPILER%" "%SOURCE%" "-i%INCLUDE%" "-i%ROOT%\gamemodes" "-o%OUTPUT%"
+
+      - name: Verify
         shell: cmd
         run: |
-          if not exist gamemodes\new.amx (
+          if not exist "gamemodes\new.amx" (
             echo ERROR: new.amx was not created
             exit /b 1
           )
-          echo SUCCESS: new.amx created
-          dir gamemodes\new.amx
 
-      - name: Upload new.amx
+          echo SUCCESS: new.amx created
+
+      - name: Upload AMX
         uses: actions/upload-artifact@v4
         with:
           name: NAVARA-new-amx
           path: gamemodes/new.amx
-          if-no-files-found: error
