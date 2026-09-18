@@ -1,0 +1,23 @@
+name: Compile NAVARA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  compile:
+    runs-on: windows-latest
+
+    steps:
+      - name: Download project
+        uses: actions/checkout@v4
+
+      - name: Compile new.pwn
+        shell: cmd
+        run: |
+          pawno\pawncc.exe gamemodes\new.pwn -i pawno\include -i gamemodes -o gamemodes\new.amx
+
+      - name: Upload new.amx
+        uses: actions/upload-artifact@v4
+        with:
+          name: new-amx
+          path: gamemodes/new.amx
