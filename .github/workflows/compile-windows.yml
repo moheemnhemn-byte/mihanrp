@@ -1,4 +1,4 @@
-name: Compile NAVARA
+name: Compile NAVARA Windows
 
 on:
   workflow_dispatch:
@@ -8,16 +8,39 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Download project
+      - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Check files
+        shell: cmd
+        run: |
+          echo ===== PROJECT =====
+          dir
+          echo ===== PAWNO =====
+          dir pawno
+          echo ===== INCLUDE =====
+          dir pawno\include
+          echo ===== GAMEMODES =====
+          dir gamemodes
 
       - name: Compile new.pwn
         shell: cmd
         run: |
-          pawno\pawncc.exe gamemodes\new.pwn -i pawno\include -i gamemodes -o gamemodes\new.amx
+          pawno\pawncc.exe gamemodes\new.pwn -ipawno\include -igamemodes -o gamemodes\new.amx
+
+      - name: Check AMX
+        shell: cmd
+        run: |
+          if not exist gamemodes\new.amx (
+            echo ERROR: new.amx was not created
+            exit /b 1
+          )
+          echo SUCCESS: new.amx created
+          dir gamemodes\new.amx
 
       - name: Upload new.amx
         uses: actions/upload-artifact@v4
         with:
-          name: new-amx
+          name: NAVARA-new-amx
           path: gamemodes/new.amx
+          if-no-files-found: error
