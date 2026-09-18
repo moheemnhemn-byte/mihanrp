@@ -84,31 +84,6 @@ jobs:
           "PAWNCC=$($pawncc.FullName)" >> $env:GITHUB_ENV
 
       # ==========================================
-      # اختبار Compiler فقط
-      # ==========================================
-        - name: Install mxINI
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-
-          Write-Host "================================"
-          Write-Host "TESTING PAWN COMPILER"
-          Write-Host "================================"
-
-          & "$env:PAWNCC" --version
-
-          $code = $LASTEXITCODE
-
-          Write-Host "Compiler test exit code: $code"
-
-          if ($code -ne 0) {
-            Write-Host "ERROR: Pawn compiler crashed or failed."
-            exit $code
-          }
-
-          Write-Host "Pawn compiler test PASSED."
-
-      # ==========================================
       # تثبيت mxINI
       # ==========================================
       - name: Install mxINI
@@ -147,6 +122,7 @@ jobs:
 
           $source = "$env:GITHUB_WORKSPACE\gamemodes\new.pwn"
           $include = "$env:GITHUB_WORKSPACE\pawno\include"
+          $output = "$env:GITHUB_WORKSPACE\gamemodes\new"
 
           if (!(Test-Path $source)) {
             Write-Host "ERROR: gamemodes\new.pwn not found."
@@ -163,9 +139,13 @@ jobs:
           Write-Host "Source:"
           Write-Host $source
 
+          Write-Host "Include:"
+          Write-Host $include
+
           & "$env:PAWNCC" `
             "$source" `
             "-i$include" `
+            "-o$output" `
             "-Z"
 
           $code = $LASTEXITCODE
@@ -173,7 +153,9 @@ jobs:
           Write-Host "Compiler exit code: $code"
 
           if ($code -ne 0) {
+            Write-Host "================================"
             Write-Host "COMPILATION FAILED."
+            Write-Host "================================"
             exit $code
           }
 
@@ -190,7 +172,7 @@ jobs:
           Write-Host "================================"
 
       # ==========================================
-      # رفع new.amx
+      # رفع new.amx كملف تحميل من Actions
       # ==========================================
       - name: Upload new.amx
         uses: actions/upload-artifact@v4
