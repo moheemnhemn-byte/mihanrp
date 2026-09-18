@@ -12,41 +12,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ==========================================
-      # تحميل Windows Pawn Compiler 3.10.10
-      # ==========================================
       - name: Download Pawn Compiler
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
 
           $url = "https://github.com/pawn-lang/compiler/releases/download/v3.10.10/pawnc-3.10.10-windows.zip"
-
           $zip = "$env:RUNNER_TEMP\pawnc.zip"
           $dir = "$env:GITHUB_WORKSPACE\pawn-compiler"
 
-          Write-Host "Downloading Pawn Compiler..."
+          Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
 
-          Invoke-WebRequest `
-            -Uri $url `
-            -OutFile $zip `
-            -UseBasicParsing
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
 
-          New-Item `
-            -ItemType Directory `
-            -Force `
-            -Path $dir | Out-Null
+          Expand-Archive -Path $zip -DestinationPath $dir -Force
 
-          Expand-Archive `
-            -Path $zip `
-            -DestinationPath $dir `
-            -Force
+          Write-Host "Compiler downloaded."
 
-          Write-Host "Compiler extracted."
-
-      # ==========================================
-      # العثور على Compiler
-      # ==========================================
       - name: Locate Compiler
         shell: powershell
         run: |
@@ -62,30 +44,22 @@ jobs:
             Select-Object -First 1
 
           if ($null -eq $pawncc) {
-            Write-Host "ERROR: pawncc.exe not found."
+            Write-Host "pawncc.exe not found."
             exit 1
           }
 
-          $compilerDir = $pawncc.Directory.FullName
-          $dll = Join-Path $compilerDir "pawnc.dll"
-
-          Write-Host "================================"
-          Write-Host "FOUND pawncc.exe:"
-          Write-Host $pawncc.FullName
-          Write-Host "================================"
+          $dll = Join-Path $pawncc.Directory.FullName "pawnc.dll"
 
           if (!(Test-Path $dll)) {
-            Write-Host "ERROR: pawnc.dll not found beside pawncc.exe."
+            Write-Host "pawnc.dll not found."
             exit 1
           }
 
-          Write-Host "pawnc.dll found."
+          Write-Host "Compiler:"
+          Write-Host $pawncc.FullName
 
           "PAWNCC=$($pawncc.FullName)" >> $env:GITHUB_ENV
 
-      # ==========================================
-      # تثبيت mxINI
-      # ==========================================
       - name: Install mxINI
         shell: powershell
         run: |
@@ -93,27 +67,49 @@ jobs:
 
           $include = "$env:GITHUB_WORKSPACE\pawno\include"
 
-          New-Item `
-            -ItemType Directory `
-            -Force `
-            -Path $include | Out-Null
-
-          $url = "https://raw.githubusercontent.com/Open-GTO/mxINI/master/mxINI.inc"
+          New-Item -ItemType Directory -Force -Path $include | Out-Null
 
           Invoke-WebRequest `
-            -Uri $url `
+            -Uri "https://raw.githubusercontent.com/Open-GTO/mxINI/master/mxINI.inc" `
             -OutFile "$include\mxini.inc" `
             -UseBasicParsing
 
-          if (!(Test-Path "$include\mxini.inc")) {
-            Write-Host "ERROR: mxini.inc was not installed."
-            exit 1
-          }
-
-          Write-Host "mxINI installed successfully."
+          Write-Host "mxINI installed."
 
       # ==========================================
-      # Compile new.pwn
+      # اختبار Compiler بملف صغير جداً
+      # ==========================================
+      - name: Test Compiler
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $test = "$env:RUNNER_TEMP\test.pwn"
+
+          @"
+          main()
+          {
+              print("NAVARA TEST");
+          }
+          "@ | Set-Content -Path $test -Encoding ASCII
+
+          Write-Host "Testing Pawn Compiler..."
+
+          & "$env:PAWNCC" "$test" "-Z"
+
+          $code = $LASTEXITCODE
+
+          Write-Host "Test exit code: $code"
+
+          if ($code -ne 0) {
+            Write-Host "COMPILER TEST FAILED."
+            exit $code
+          }
+
+          Write-Host "COMPILER TEST PASSED."
+
+      # ==========================================
+      # Compile NAVARA
       # ==========================================
       - name: Compile new.pwn
         shell: powershell
@@ -125,22 +121,13 @@ jobs:
           $output = "$env:GITHUB_WORKSPACE\gamemodes\new"
 
           if (!(Test-Path $source)) {
-            Write-Host "ERROR: gamemodes\new.pwn not found."
+            Write-Host "new.pwn not found."
             exit 1
           }
 
           Write-Host "================================"
-          Write-Host "COMPILING new.pwn"
+          Write-Host "COMPILING NAVARA"
           Write-Host "================================"
-
-          Write-Host "Compiler:"
-          Write-Host $env:PAWNCC
-
-          Write-Host "Source:"
-          Write-Host $source
-
-          Write-Host "Include:"
-          Write-Host $include
 
           & "$env:PAWNCC" `
             "$source" `
@@ -153,27 +140,19 @@ jobs:
           Write-Host "Compiler exit code: $code"
 
           if ($code -ne 0) {
-            Write-Host "================================"
-            Write-Host "COMPILATION FAILED."
-            Write-Host "================================"
+            Write-Host "NAVARA COMPILATION FAILED."
             exit $code
           }
 
-          $amx = "$env:GITHUB_WORKSPACE\gamemodes\new.amx"
-
-          if (!(Test-Path $amx)) {
-            Write-Host "ERROR: new.amx was not created."
+          if (!(Test-Path "$env:GITHUB_WORKSPACE\gamemodes\new.amx")) {
+            Write-Host "new.amx was not created."
             exit 1
           }
 
           Write-Host "================================"
-          Write-Host "SUCCESS!"
-          Write-Host "new.amx CREATED."
+          Write-Host "SUCCESS - new.amx CREATED"
           Write-Host "================================"
 
-      # ==========================================
-      # رفع new.amx كملف تحميل من Actions
-      # ==========================================
       - name: Upload new.amx
         uses: actions/upload-artifact@v4
         with:
