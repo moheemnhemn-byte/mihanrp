@@ -11,6 +11,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Prepare includes
+        shell: cmd
+        run: |
+          echo Searching for mxINI.inc...
+
+          if exist "pawno\include\mxINI.inc" (
+            echo Found mxINI.inc
+            copy /Y "pawno\include\mxINI.inc" "pawno\include\mxini.inc"
+          ) else if exist "pawno\include\mxini.inc" (
+            echo Found mxini.inc
+          ) else (
+            echo ERROR: mxINI.inc was not found
+            echo.
+            echo Available INI files:
+            dir /B "pawno\include\*ini*.inc"
+            exit /b 1
+          )
+
       - name: Compile new.pwn
         shell: cmd
         run: |
@@ -20,13 +38,23 @@ jobs:
           set "INCLUDE=%ROOT%\pawno\include"
           set "OUTPUT=%ROOT%\gamemodes\new"
 
-          if not exist "%COMPILER%" exit /b 1
-          if not exist "%SOURCE%" exit /b 1
-          if not exist "%INCLUDE%" exit /b 1
+          echo ========================================
+          echo NAVARA PAWN COMPILER
+          echo ========================================
+
+          if not exist "%COMPILER%" (
+            echo ERROR: pawncc.exe not found
+            exit /b 1
+          )
+
+          if not exist "%SOURCE%" (
+            echo ERROR: new.pwn not found
+            exit /b 1
+          )
 
           "%COMPILER%" "%SOURCE%" "-i%INCLUDE%" "-i%ROOT%\gamemodes" "-o%OUTPUT%"
 
-      - name: Verify
+      - name: Verify AMX
         shell: cmd
         run: |
           if not exist "gamemodes\new.amx" (
@@ -34,10 +62,16 @@ jobs:
             exit /b 1
           )
 
-          echo SUCCESS: new.amx created
+          echo ========================================
+          echo SUCCESS!
+          echo new.amx CREATED
+          echo ========================================
 
-      - name: Upload AMX
+          dir "gamemodes\new.amx"
+
+      - name: Upload new.amx
         uses: actions/upload-artifact@v4
         with:
           name: NAVARA-new-amx
           path: gamemodes/new.amx
+          if-no-files-found: error
