@@ -1,4 +1,4 @@
-name: Compile NAVARA Windows
+name: Compile NAVARA Pawn
 
 on:
   workflow_dispatch:
@@ -8,67 +8,155 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      # ==============================
+      # 1. تحميل المشروع
+      # ==============================
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Prepare includes
-        shell: cmd
+      # ==============================
+      # 2. تجهيز المجلدات
+      # ==============================
+      - name: Prepare folders
+        shell: powershell
         run: |
-          echo Searching for mxINI.inc...
+          $root = (Get-Location).Path
 
-          if exist "pawno\include\mxINI.inc" (
-            echo Found mxINI.inc
-            copy /Y "pawno\include\mxINI.inc" "pawno\include\mxini.inc"
-          ) else if exist "pawno\include\mxini.inc" (
-            echo Found mxini.inc
-          ) else (
-            echo ERROR: mxINI.inc was not found
-            echo.
-            echo Available INI files:
-            dir /B "pawno\include\*ini*.inc"
-            exit /b 1
-          )
+          Write-Host "Project root:"
+          Write-Host $root
 
+          New-Item -ItemType Directory -Force -Path "$root\pawno\include" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$root\gamemodes" | Out-Null
+
+      # ==============================
+      # 3. تنزيل mxINI.inc
+      # ==============================
+      - name: Install mxINI
+        shell: powershell
+        run: |
+          $url = "https://raw.githubusercontent.com/Open-GTO/mxINI/master/mxINI.inc"
+          $destination = "$env:GITHUB_WORKSPACE\pawno\include\mxini.inc"
+
+          Write-Host "Downloading mxINI.inc..."
+          Invoke-WebRequest `
+            -Uri $url `
+            -OutFile $destination `
+            -UseBasicParsing
+
+          if (!(Test-Path $destination)) {
+            Write-Host "ERROR: mxINI.inc was not downloaded."
+            exit 1
+          }
+
+          Write-Host "mxINI installed successfully:"
+          Write-Host $destination
+
+      # ==============================
+      # 4. التحقق من الملفات
+      # ==============================
+      - name: Check required files
+        shell: powershell
+        run: |
+          $root = $env:GITHUB_WORKSPACE
+
+          $source = "$root\gamemodes\new.pwn"
+          $compiler = "$root\pawno\pawncc.exe"
+          $include = "$root\pawno\include"
+          $mxini = "$include\mxini.inc"
+
+          Write-Host ""
+          Write-Host "========== FILE CHECK =========="
+
+          if (!(Test-Path $source)) {
+            Write-Host "ERROR: gamemodes\new.pwn not found."
+            exit 1
+          }
+
+          if (!(Test-Path $compiler)) {
+            Write-Host "ERROR: pawno\pawncc.exe not found."
+            exit 1
+          }
+
+          if (!(Test-Path $mxini)) {
+            Write-Host "ERROR: mxini.inc not found."
+            exit 1
+          }
+
+          Write-Host "new.pwn      : OK"
+          Write-Host "pawncc.exe   : OK"
+          Write-Host "mxini.inc    : OK"
+          Write-Host "================================"
+          Write-Host ""
+
+      # ==============================
+      # 5. Compile new.pwn
+      # ==============================
       - name: Compile new.pwn
-        shell: cmd
+        shell: powershell
         run: |
-          set "ROOT=%CD%"
-          set "COMPILER=%ROOT%\pawno\pawncc.exe"
-          set "SOURCE=%ROOT%\gamemodes\new.pwn"
-          set "INCLUDE=%ROOT%\pawno\include"
-          set "OUTPUT=%ROOT%\gamemodes\new"
+          $root = $env:GITHUB_WORKSPACE
 
-          echo ========================================
-          echo NAVARA PAWN COMPILER
-          echo ========================================
+          $compiler = "$root\pawno\pawncc.exe"
+          $source = "$root\gamemodes\new.pwn"
+          $include = "$root\pawno\include"
+          $output = "$root\gamemodes\new"
 
-          if not exist "%COMPILER%" (
-            echo ERROR: pawncc.exe not found
-            exit /b 1
-          )
+          Write-Host ""
+          Write-Host "========== COMPILING =========="
+          Write-Host "Compiler : $compiler"
+          Write-Host "Source   : $source"
+          Write-Host "Include  : $include"
+          Write-Host "Output   : $output"
+          Write-Host "==============================="
+          Write-Host ""
 
-          if not exist "%SOURCE%" (
-            echo ERROR: new.pwn not found
-            exit /b 1
-          )
+          & $compiler `
+            $source `
+            "-i$include" `
+            "-i$root\gamemodes" `
+            "-i$root"
 
-          "%COMPILER%" "%SOURCE%" "-i%INCLUDE%" "-i%ROOT%\gamemodes" "-o%OUTPUT%"
+          $exitCode = $LASTEXITCODE
 
+          Write-Host ""
+          Write-Host "Compiler exit code: $exitCode"
+
+          if ($exitCode -ne 0) {
+            Write-Host ""
+            Write-Host "COMPILATION FAILED."
+            exit $exitCode
+          }
+
+      # ==============================
+      # 6. البحث عن AMX
+      # ==============================
       - name: Verify AMX
-        shell: cmd
+        shell: powershell
         run: |
-          if not exist "gamemodes\new.amx" (
-            echo ERROR: new.amx was not created
-            exit /b 1
-          )
+          $root = $env:GITHUB_WORKSPACE
+          $amx = "$root\gamemodes\new.amx"
 
-          echo ========================================
-          echo SUCCESS!
-          echo new.amx CREATED
-          echo ========================================
+          Write-Host ""
+          Write-Host "========== AMX CHECK =========="
 
-          dir "gamemodes\new.amx"
+          if (!(Test-Path $amx)) {
+            Write-Host "ERROR: new.amx was not created."
+            Write-Host ""
+            Write-Host "Files inside gamemodes:"
+            Get-ChildItem "$root\gamemodes" | Select-Object Name, Length
+            exit 1
+          }
 
+          $size = (Get-Item $amx).Length
+
+          Write-Host "SUCCESS!"
+          Write-Host "new.amx created."
+          Write-Host "Size: $size bytes"
+          Write-Host "================================"
+
+      # ==============================
+      # 7. رفع new.amx كـ Artifact
+      # ==============================
       - name: Upload new.amx
         uses: actions/upload-artifact@v4
         with:
