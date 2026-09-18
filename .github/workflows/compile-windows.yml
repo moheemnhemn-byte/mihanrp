@@ -9,72 +9,35 @@ jobs:
 
     steps:
 
-      # =========================================
-      # 1. تحميل المشروع
-      # =========================================
       - name: Checkout
         uses: actions/checkout@v4
 
-
-      # =========================================
-      # 2. تحميل Pawn Compiler الرسمي
-      # =========================================
-      - name: Install Pawn Compiler
+      # ==========================================
+      # تحميل Compiler الرسمي
+      # ==========================================
+      - name: Download Pawn Compiler
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
 
           $api = "https://api.github.com/repos/pawn-lang/compiler/releases/tags/v3.10.10"
 
-          Write-Host "Getting Pawn Compiler 3.10.10..."
-
           $release = Invoke-RestMethod `
             -Uri $api `
-            -Headers @{
-              "User-Agent" = "GitHub-Actions"
-            }
+            -Headers @{ "User-Agent" = "GitHub-Actions" }
 
           Write-Host "Release: $($release.tag_name)"
 
-          if ($null -eq $release.assets) {
-            Write-Host "ERROR: No release assets found."
-            exit 1
-          }
-
-          Write-Host ""
-          Write-Host "Available files:"
-          $release.assets | ForEach-Object {
-            Write-Host $_.name
-          }
-
-          # ابحث عن حزمة Windows
           $asset = $release.assets |
-            Where-Object {
-              $_.name -match "\.zip$" -and
-              $_.name -match "(win|windows)"
-            } |
+            Where-Object { $_.name -match "\.zip$" } |
             Select-Object -First 1
 
-          # إذا الاسم ما يحتوي Windows،
-          # خذ أول ZIP رسمي
           if ($null -eq $asset) {
-            $asset = $release.assets |
-              Where-Object {
-                $_.name -match "\.zip$"
-              } |
-              Select-Object -First 1
-          }
-
-          if ($null -eq $asset) {
-            Write-Host ""
-            Write-Host "ERROR: Windows compiler ZIP was not found."
+            Write-Host "ERROR: Compiler ZIP not found."
             exit 1
           }
 
-          Write-Host ""
-          Write-Host "Selected:"
-          Write-Host $asset.name
-          Write-Host ""
+          Write-Host "Downloading: $($asset.name)"
 
           $zip = "$env:RUNNER_TEMP\pawn.zip"
           $dir = "$env:GITHUB_WORKSPACE\pawn-compiler"
@@ -83,11 +46,6 @@ jobs:
             -Uri $asset.browser_download_url `
             -OutFile $zip `
             -UseBasicParsing
-
-          if (!(Test-Path $zip)) {
-            Write-Host "ERROR: Download failed."
-            exit 1
-          }
 
           New-Item `
             -ItemType Directory `
@@ -101,40 +59,70 @@ jobs:
 
           Write-Host "Compiler extracted."
 
-
-      # =========================================
-      # 3. إيجاد pawncc.exe
-      # =========================================
-      - name: Locate pawncc
+      # ==========================================
+      # إيجاد pawncc.exe + pawnc.dll
+      # ==========================================
+      - name: Locate Compiler Files
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
 
-          $compiler = Get-ChildItem `
+          $pawncc = Get-ChildItem `
             "$env:GITHUB_WORKSPACE\pawn-compiler" `
             -Recurse `
             -Filter "pawncc.exe" `
             -File |
             Select-Object -First 1
 
-          if ($null -eq $compiler) {
+          if ($null -eq $pawncc) {
             Write-Host "ERROR: pawncc.exe not found."
             exit 1
           }
 
-          $compilerPath = $compiler.FullName
+          $compilerDir = $pawncc.Directory.FullName
 
-          "PAWNCC=$compilerPath" >> $env:GITHUB_ENV
+          Write-Host "Compiler directory:"
+          Write-Host $compilerDir
+
+          $pawnc = Join-Path $compilerDir "pawnc.dll"
+
+          if (!(Test-Path $pawnc)) {
+
+            Write-Host "pawnc.dll not beside pawncc.exe."
+
+            $pawnc = Get-ChildItem `
+              "$env:GITHUB_WORKSPACE\pawn-compiler" `
+              -Recurse `
+              -Filter "pawnc.dll" `
+              -File |
+              Select-Object -First 1
+
+            if ($null -eq $pawnc) {
+              Write-Host "ERROR: pawnc.dll not found anywhere."
+              exit 1
+            }
+
+            Copy-Item `
+              $pawnc.FullName `
+              (Join-Path $compilerDir "pawnc.dll") `
+              -Force
+          }
 
           Write-Host ""
-          Write-Host "Pawn compiler:"
-          Write-Host $compilerPath
+          Write-Host "pawncc.exe:"
+          Write-Host $pawncc.FullName
 
+          Write-Host ""
+          Write-Host "pawnc.dll:"
+          Write-Host (Join-Path $compilerDir "pawnc.dll")
 
-      # =========================================
-      # 4. تجهيز include
-      # =========================================
-      - name: Prepare includes
+          "PAWNCC=$($pawncc.FullName)" >> $env:GITHUB_ENV
+          "COMPILER_DIR=$compilerDir" >> $env:GITHUB_ENV
+
+      # ==========================================
+      # تجهيز includes
+      # ==========================================
+      - name: Prepare Includes
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
@@ -146,123 +134,79 @@ jobs:
             -Force `
             -Path $include | Out-Null
 
-          Write-Host "Include folder ready."
-
-
-      # =========================================
-      # 5. تنزيل mxINI.inc
-      # =========================================
-      - name: Install mxINI
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-
-          $destination =
-            "$env:GITHUB_WORKSPACE\pawno\include\mxini.inc"
-
-          $url =
-            "https://raw.githubusercontent.com/Open-GTO/mxINI/master/mxINI.inc"
-
-          Write-Host "Downloading mxINI.inc..."
+          $mxini = "$include\mxini.inc"
 
           Invoke-WebRequest `
-            -Uri $url `
-            -OutFile $destination `
+            -Uri "https://raw.githubusercontent.com/Open-GTO/mxINI/master/mxINI.inc" `
+            -OutFile $mxini `
             -UseBasicParsing
-
-          if (!(Test-Path $destination)) {
-            Write-Host "ERROR: mxini.inc not found."
-            exit 1
-          }
-
-          Write-Host "mxINI.inc installed successfully."
-
-
-      # =========================================
-      # 6. فحص المشروع
-      # =========================================
-      - name: Check files
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-
-          $root = $env:GITHUB_WORKSPACE
-
-          $source =
-            "$root\gamemodes\new.pwn"
-
-          $include =
-            "$root\pawno\include"
-
-          $mxini =
-            "$include\mxini.inc"
-
-          Write-Host ""
-          Write-Host "=============================="
-          Write-Host "       FILE CHECK"
-          Write-Host "=============================="
-
-          if (!(Test-Path $source)) {
-            Write-Host "ERROR: new.pwn not found."
-            exit 1
-          }
 
           if (!(Test-Path $mxini)) {
             Write-Host "ERROR: mxini.inc not found."
             exit 1
           }
 
-          if (!(Test-Path $env:PAWNCC)) {
-            Write-Host "ERROR: pawncc.exe not found."
+          Write-Host "mxini.inc OK"
+
+      # ==========================================
+      # اختبار تشغيل المترجم قبل Compilation
+      # ==========================================
+      - name: Test Pawn Compiler
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          Write-Host "Testing pawncc..."
+
+          Push-Location $env:COMPILER_DIR
+
+          & $env:PAWNCC
+
+          $code = $LASTEXITCODE
+
+          Pop-Location
+
+          Write-Host "pawncc exit code: $code"
+
+          # 0 أو أي كود عادي من عرض المساعدة مقبول.
+          # المهم ألا يكون Windows DLL error.
+          if ($code -eq -1073741515) {
+            Write-Host "ERROR: pawncc still cannot load its DLL."
             exit 1
           }
 
-          Write-Host "new.pwn    : OK"
-          Write-Host "mxini.inc  : OK"
-          Write-Host "pawncc.exe : OK"
+          Write-Host "Pawn compiler can start."
 
-          Write-Host "=============================="
-
-
-      # =========================================
-      # 7. Compile
-      # =========================================
+      # ==========================================
+      # Compile
+      # ==========================================
       - name: Compile new.pwn
         shell: powershell
         run: |
           $ErrorActionPreference = "Continue"
 
           $root = $env:GITHUB_WORKSPACE
-
-          $source =
-            "$root\gamemodes\new.pwn"
-
-          $include =
-            "$root\pawno\include"
-
-          $game =
-            "$root\gamemodes"
+          $game = "$root\gamemodes"
+          $include = "$root\pawno\include"
 
           Write-Host ""
-          Write-Host "===================================="
-          Write-Host "       COMPILING NAVARA"
-          Write-Host "===================================="
-          Write-Host ""
+          Write-Host "========================================"
+          Write-Host "          COMPILING NAVARA"
+          Write-Host "========================================"
 
           Write-Host "Compiler:"
           Write-Host $env:PAWNCC
 
           Write-Host ""
           Write-Host "Source:"
-          Write-Host $source
+          Write-Host "$game\new.pwn"
 
           Write-Host ""
           Write-Host "Include:"
           Write-Host $include
 
           Write-Host ""
-          Write-Host "===================================="
-          Write-Host ""
+          Write-Host "========================================"
 
           Push-Location $game
 
@@ -286,52 +230,36 @@ jobs:
             exit $code
           }
 
-
-      # =========================================
-      # 8. التأكد من AMX
-      # =========================================
+      # ==========================================
+      # التأكد من new.amx
+      # ==========================================
       - name: Verify AMX
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
 
-          $amx =
-            "$env:GITHUB_WORKSPACE\gamemodes\new.amx"
-
-          Write-Host ""
-          Write-Host "===================================="
-          Write-Host "          CHECKING AMX"
-          Write-Host "===================================="
+          $amx = "$env:GITHUB_WORKSPACE\gamemodes\new.amx"
 
           if (!(Test-Path $amx)) {
             Write-Host "ERROR: new.amx was not created."
-
-            Write-Host ""
-            Write-Host "gamemodes files:"
-
-            Get-ChildItem `
-              "$env:GITHUB_WORKSPACE\gamemodes" |
-              Select-Object Name, Length
-
             exit 1
           }
 
           $size = (Get-Item $amx).Length
 
           Write-Host ""
-          Write-Host "===================================="
-          Write-Host "             SUCCESS"
-          Write-Host "===================================="
+          Write-Host "========================================"
+          Write-Host "              SUCCESS"
+          Write-Host "========================================"
           Write-Host ""
           Write-Host "new.amx created successfully!"
           Write-Host "Size: $size bytes"
           Write-Host ""
 
-
-      # =========================================
-      # 9. رفع الملف
-      # =========================================
-      - name: Upload AMX
+      # ==========================================
+      # رفع AMX
+      # ==========================================
+      - name: Upload new.amx
         uses: actions/upload-artifact@v4
         with:
           name: NAVARA-new-amx
